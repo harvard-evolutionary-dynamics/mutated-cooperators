@@ -32,12 +32,24 @@ M1: Payoffs = {
 
 M2: Payoffs = {
   (Individual.MutatedCooperator, Individual.MutatedCooperator): 2.5,
-  (Individual.MutatedCooperator, Individual.Cooperator): 1,
+  (Individual.MutatedCooperator, Individual.Cooperator): 5,
   (Individual.MutatedCooperator, Individual.Defector): 1.5,
   (Individual.Cooperator, Individual.MutatedCooperator): 2,
   (Individual.Cooperator, Individual.Cooperator): 4,
   (Individual.Cooperator, Individual.Defector): 1,
   (Individual.Defector, Individual.MutatedCooperator): 3,
+  (Individual.Defector, Individual.Cooperator): 6,
+  (Individual.Defector, Individual.Defector): 2,
+}
+
+M3: Payoffs = {
+  (Individual.MutatedCooperator, Individual.MutatedCooperator): 4,
+  (Individual.MutatedCooperator, Individual.Cooperator): 2,
+  (Individual.MutatedCooperator, Individual.Defector): 0,
+  (Individual.Cooperator, Individual.MutatedCooperator): 2,
+  (Individual.Cooperator, Individual.Cooperator): 4,
+  (Individual.Cooperator, Individual.Defector): 1,
+  (Individual.Defector, Individual.MutatedCooperator): 1,
   (Individual.Defector, Individual.Cooperator): 6,
   (Individual.Defector, Individual.Defector): 2,
 }
@@ -88,30 +100,38 @@ def birth_death(N: int, nC: int, nC1: int, M: Payoffs, mu: float = 0, w: float =
 
 def main():
   INTERVALS = 6
-  epsilon, delta = 0.001, .05
-  TRIALS = np.ceil(4*np.log(2/delta)/epsilon**2) # 10000
-  print(f"{epsilon=}, {delta=} --> {TRIALS=}")
+  # epsilon, delta = 0.001, .05
+  # TRIALS = int(np.ceil(4*np.log(2/delta)/epsilon**2)) # 10000
+  # print(f"{epsilon=}, {delta=} --> {TRIALS=}")
+  TRIALS = 10_000
   w = 1
+  M = M1
   data = []
-  fixated_D = []
   for N in range(10, 50+1, 10):
     for mu in np.linspace(0, 0.5, INTERVALS, endpoint=True):
+      fixated_D = []
+      stepss = []
       for trial in range(TRIALS):
         nC = N-1
         nC1 = 0
         nD = 1
         steps = 0
         while nD not in (0, N):
-          nCp, nC1p = birth_death(N, nC, nC1, M=M2, mu=mu, w=w)
+          nCp, nC1p = birth_death(N, nC, nC1, M, mu=mu, w=w)
           nC, nC1, nD = (nCp, nC1p, N-(nCp + nC1p))
           steps += 1
         fixated_D.append(nD == N)
+        if nD == N:
+          stepss.append(steps)
 
       fp_D = np.mean(fixated_D)
-      data.append((N, mu, fp_D))
+      ft_D = np.mean(stepss)
+      data.append((N, mu, fp_D, ft_D))
 
-  df = pd.DataFrame(data, columns=['N', 'mu', 'fp_D'])
-  sns.lineplot(df, x='mu', y='fp_D', hue='N', linestyle='--', marker='o')
+  df = pd.DataFrame(data, columns=['N', 'mu', 'fp_D', 'ft_D'])
+  # sns.lineplot(df, x='mu', y='fp_D', hue='N', linestyle='--', marker='o')
+  sns.lineplot(df, x='mu', y='ft_D', hue='N', linestyle='--', marker='o')
+  plt.savefig(f'figs/M1-ftD-saptarshi.png', dpi=300, bbox_inches="tight")
   plt.show()
 
 if __name__ == '__main__':

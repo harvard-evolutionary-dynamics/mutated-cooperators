@@ -54,6 +54,18 @@ M3: Payoffs = {
   (Individual.Defector, Individual.Defector): 2,
 }
 
+M4: Payoffs = {
+  (Individual.MutatedCooperator, Individual.MutatedCooperator): 4,
+  (Individual.MutatedCooperator, Individual.Cooperator): 2,
+  (Individual.MutatedCooperator, Individual.Defector): 0,
+  (Individual.Cooperator, Individual.MutatedCooperator): 1,
+  (Individual.Cooperator, Individual.Cooperator): 4,
+  (Individual.Cooperator, Individual.Defector): 1,
+  (Individual.Defector, Individual.MutatedCooperator): 2,
+  (Individual.Defector, Individual.Cooperator): 6,
+  (Individual.Defector, Individual.Defector): 2,
+}
+
 def birth_death(N: int, nC: int, nC1: int, M: Payoffs, mu: float = 0, w: float = 1):
   nD = N-nC-nC1
   assert nC + nC1 + nD == N
@@ -105,7 +117,7 @@ def main():
   # print(f"{epsilon=}, {delta=} --> {TRIALS=}")
   TRIALS = 10_000
   w = 1
-  M = M1
+  M = M4
   data = []
   for N in range(10, 50+1, 10):
     for mu in np.linspace(0, 0.5, INTERVALS, endpoint=True):
@@ -131,7 +143,7 @@ def main():
   df = pd.DataFrame(data, columns=['N', 'mu', 'fp_D', 'ft_D'])
   # sns.lineplot(df, x='mu', y='fp_D', hue='N', linestyle='--', marker='o')
   sns.lineplot(df, x='mu', y='ft_D', hue='N', linestyle='--', marker='o')
-  plt.savefig(f'figs/M1-ftD-saptarshi.png', dpi=300, bbox_inches="tight")
+  plt.savefig(f'figs/M4-ftD-saptarshi.png', dpi=300, bbox_inches="tight")
   plt.show()
 
 if __name__ == '__main__':

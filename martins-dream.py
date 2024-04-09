@@ -90,7 +90,7 @@ def main():
   fig, ax = plt.subplots(1,2)
   sns.lineplot(df, ax=ax[0], x='mu', y='fp_ALLD', hue='N', linestyle='--', marker='o', legend=False)
   sns.lineplot(df, ax=ax[1], x='mu', y='fp_ALLC_given_ALLD_extinct', hue='N', linestyle='--', marker='o', legend=False)
-  fig.savefig(f'figs/M4-ft_ALLD-saptarshi.png', dpi=300, bbox_inches="tight")
+  fig.savefig(f'figs/M-ft_ALLD-saptarshi.png', dpi=300, bbox_inches="tight")
   plt.show()
   # fig.show()
 

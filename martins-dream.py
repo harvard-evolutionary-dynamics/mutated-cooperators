@@ -5,6 +5,7 @@ import scipy as sp
 import seaborn as sns
 import random
 import pandas as pd
+import operator
 
 from enum import Enum
 from multiprocessing import Pool
@@ -35,7 +36,7 @@ M: Payoffs = {
   (Strategy.AlwaysDefect, Strategy.AlwaysDefect): 0,
 }
 
-def pick_individual_with_payoffs(N: int, nALLC: int, nTFT: int, M: Payoffs):
+def calculate_payoffs(N: int, nALLC: int, nTFT: int, M: Payoffs):
   nALLD = N-nALLC-nTFT
   payoff_ALLC = (
     nALLD/(N-1) * M[(Strategy.AlwaysCooperate, Strategy.AlwaysDefect)]
@@ -53,10 +54,40 @@ def pick_individual_with_payoffs(N: int, nALLC: int, nTFT: int, M: Payoffs):
     + nALLC/(N-1) * M[(Strategy.AlwaysDefect, Strategy.AlwaysCooperate)]
   )
 
-  fitnesses = np.array(list(map(np.exp, (payoff_ALLC, payoff_TFT, payoff_ALLD))))
-  total_fitness = sum(fitnesses)
+  return (payoff_ALLC, payoff_TFT, payoff_ALLD)
 
-  return random.choices(population=STRATEGIES, weights=fitnesses/total_fitness)[0]
+
+def pick_individual_with_payoffs(N: int, nALLC: int, nTFT: int, M: Payoffs):
+  calculate_payoffs(N, nALLC, nTFT, M, np.exp)
+  unnormalized_fitnesses = np.array(list(map(np.exp, calculate_payoffs(N, nALLC, nTFT, M))))
+  total_fitness = sum(unnormalized_fitnesses)
+  return random.choices(population=STRATEGIES, weights=unnormalized_fitnesses / total_fitness)[0]
+
+
+def pick_individual_uniformly(N: int, nALLC: int, nTFT: int, nALLD):
+  return random.choices(population=STRATEGIES, weights=np.array([nALLC, nTFT, nALLD])/N)[0]
+
+def pairwise_comparison(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float):
+  assert 0 <= mu <= 1, mu
+  nALLD = N-nALLC-nTFT
+  assert nALLC + nTFT + nALLD == N
+  assert all(nX >= 0 for nX in (nALLC, nTFT, nALLD)), (nALLC, nTFT, nALLD)
+
+  strategy_picked_for_update = pick_individual_uniformly(N, nALLC, nTFT, nALLD)
+  strategy_role_model = pick_individual_uniformly(
+    N-1,
+    nALLC-int(strategy_picked_for_update==Strategy.AlwaysCooperate),
+    nTFT-int(strategy_picked_for_update==Strategy.TitForTat),
+    M,
+  )
+  ps = {s: pi for s, pi in zip(STRATEGIES, calculate_payoffs(N, nALLC, nTFT, M))}
+  ns = {s: nX for s, nX in zip(STRATEGIES, (nALLC, nTFT, nALLD))}
+
+  F_j = ps[strategy_picked_for_update] / ns[strategy_picked_for_update]
+  F_i = ps[strategy_role_model] / ns[strategy_role_model]
+  x = F_i - F_j
+  theta = 1/(1+np.exp(-x)) 
+  return random.choices([strategy_role_model, strategy_picked_for_update], weights=[theta, 1-theta])[0]
 
 
 def imitation(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float):
@@ -65,8 +96,7 @@ def imitation(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float):
   assert nALLC + nTFT + nALLD == N
   assert all(nX >= 0 for nX in (nALLC, nTFT, nALLD)), (nALLC, nTFT, nALLD)
 
-  pick_individual_uniformly = lambda: random.choices(population=STRATEGIES, weights=np.array([nALLC, nTFT, nALLD])/N)[0]
-  strategy_picked_for_update = pick_individual_uniformly()
+  strategy_picked_for_update = pick_individual_uniformly(N, nALLC, nTFT, nALLD)
   strategy_role_model = pick_individual_with_payoffs(N, nALLC, nTFT, M)
 
   # Conditional mutation.

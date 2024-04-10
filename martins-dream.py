@@ -87,6 +87,7 @@ def pairwise_comparison(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float):
   F_i = ps[strategy_role_model] / ns[strategy_role_model]
   x = F_i - F_j
   theta = 1/(1+np.exp(-x)) 
+  assert 0 <= theta <= 1, theta
   return random.choices([strategy_role_model, strategy_picked_for_update], weights=[theta, 1-theta])[0]
 
 
@@ -109,7 +110,7 @@ def imitation(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float):
     nTFT + int(new_strategy == Strategy.TitForTat) - int(strategy_picked_for_update == Strategy.TitForTat),
   )
 
-def simulate(N: int, TRIALS: int, mu: float):
+def simulate(N: int, TRIALS: int, mu: float, dynamics):
   print('start', mu)
   fixated_ALLD = []
   fixated_ALLC_given_ALLD_extinct = []
@@ -127,21 +128,25 @@ def simulate(N: int, TRIALS: int, mu: float):
     if nALLD == 0:
       fixated_ALLC_given_ALLD_extinct.append(nALLC == N)
 
-
   fp_ALLD = np.mean(fixated_ALLD)
   fp_ALLC_given_ALLD_extinct = np.mean(fixated_ALLC_given_ALLD_extinct)
   print('end', mu)
   return (N, mu, fp_ALLD, fp_ALLC_given_ALLD_extinct)
 
+DYNAMICS = {
+  'imitation': imitation,
+  'pairwise_comparison': pairwise_comparison,
+}
+
 def main():
-  INTERVALS = 100
-  TRIALS = 1_000
+  INTERVALS = 10
+  TRIALS = 10
   NUM_WORKERS = 8
   data = []
   for N in (10,):
     mus = np.linspace(0, 1, INTERVALS, endpoint=True)
     with Pool(NUM_WORKERS) as p:
-      for datum in p.map(functools.partial(simulate, N, TRIALS), mus):
+      for datum in p.map(functools.partial(simulate, N, TRIALS, DYNAMICS['pairwise_comparison']), mus):
         data.append(datum)
 
   df = pd.DataFrame(data, columns=['N', 'mu', 'fp_ALLD', 'fp_ALLC_given_ALLD_extinct'])
@@ -149,7 +154,7 @@ def main():
   sns.lineplot(df, ax=ax[0], x='mu', y='fp_ALLD', hue='N', linestyle='--', marker='o', legend=False)
   sns.lineplot(df, ax=ax[1], x='mu', y='fp_ALLC_given_ALLD_extinct', hue='N', linestyle='--', marker='o', legend=False)
   plt.tight_layout()
-  fig.savefig(f'figs/M-fp_ALLD-saptarshi-{TRIALS=}.png', dpi=300)
+  fig.savefig(f'figs/M-fp_ALLD-saptarshi-{TRIALS=}-pairwise-comparison.png', dpi=300)
   plt.show()
 
 if __name__ == '__main__':

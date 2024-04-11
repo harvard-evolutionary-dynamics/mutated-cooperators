@@ -58,7 +58,7 @@ def calculate_payoffs(N: int, nALLC: int, nTFT: int, M: Payoffs):
 
 
 def pick_individual_with_payoffs(N: int, nALLC: int, nTFT: int, M: Payoffs):
-  calculate_payoffs(N, nALLC, nTFT, M, np.exp)
+  calculate_payoffs(N, nALLC, nTFT, M)
   unnormalized_fitnesses = np.array(list(map(np.exp, calculate_payoffs(N, nALLC, nTFT, M))))
   total_fitness = sum(unnormalized_fitnesses)
   return random.choices(population=STRATEGIES, weights=unnormalized_fitnesses / total_fitness)[0]
@@ -66,6 +66,11 @@ def pick_individual_with_payoffs(N: int, nALLC: int, nTFT: int, M: Payoffs):
 
 def pick_individual_uniformly(N: int, nALLC: int, nTFT: int, nALLD):
   return random.choices(population=STRATEGIES, weights=np.array([nALLC, nTFT, nALLD])/N)[0]
+
+def possibly_mutate(strategy: Strategy, nALLD: int, mu: float):
+  if strategy == Strategy.AlwaysCooperate and nALLD > 0:
+    strategy = random.choices(population=[Strategy.TitForTat, strategy], weights=[mu, 1-mu])[0]
+  return strategy
 
 def pairwise_comparison(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float):
   assert 0 <= mu <= 1, mu
@@ -81,15 +86,16 @@ def pairwise_comparison(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float):
     M,
   )
   ps = {s: pi for s, pi in zip(STRATEGIES, calculate_payoffs(N, nALLC, nTFT, M))}
-  ns = {s: nX for s, nX in zip(STRATEGIES, (nALLC, nTFT, nALLD))}
 
-  F_j = ps[strategy_picked_for_update] / ns[strategy_picked_for_update]
-  F_i = ps[strategy_role_model] / ns[strategy_role_model]
+  F_j = ps[strategy_picked_for_update]
+  F_i = ps[strategy_role_model]
   x = F_i - F_j
   theta = 1/(1+np.exp(-x)) 
   assert 0 <= theta <= 1, theta
-  return random.choices([strategy_role_model, strategy_picked_for_update], weights=[theta, 1-theta])[0]
+  new_strategy = random.choices([strategy_role_model, strategy_picked_for_update], weights=[theta, 1-theta])[0]
 
+  return possibly_mutate(new_strategy, nALLD, mu)
+    
 
 def imitation(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float):
   assert 0 <= mu <= 1, mu
@@ -101,16 +107,14 @@ def imitation(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float):
   strategy_role_model = pick_individual_with_payoffs(N, nALLC, nTFT, M)
 
   # Conditional mutation.
-  new_strategy = strategy_role_model
-  if new_strategy == Strategy.AlwaysCooperate and nALLD > 0:
-    new_strategy = random.choices(population=[Strategy.TitForTat, new_strategy], weights=[mu, 1-mu])[0]
+  new_strategy = possibly_mutate(strategy_role_model, nALLD, mu)
     
   return (
     nALLC + int(new_strategy == Strategy.AlwaysCooperate) - int(strategy_picked_for_update == Strategy.AlwaysCooperate),
     nTFT + int(new_strategy == Strategy.TitForTat) - int(strategy_picked_for_update == Strategy.TitForTat),
   )
 
-def simulate(N: int, TRIALS: int, mu: float, dynamics):
+def simulate(N: int, TRIALS: int, dynamics, mu: float):
   print('start', mu)
   fixated_ALLD = []
   fixated_ALLC_given_ALLD_extinct = []
@@ -139,8 +143,8 @@ DYNAMICS = {
 }
 
 def main():
-  INTERVALS = 10
-  TRIALS = 10
+  INTERVALS = 100
+  TRIALS = 1_000
   NUM_WORKERS = 8
   data = []
   for N in (10,):

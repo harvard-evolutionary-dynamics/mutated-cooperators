@@ -96,9 +96,11 @@ def pairwise_comparison(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, ba
   x = F_i - F_j
   theta = 1/(1+np.exp(-x)) 
   assert 0 <= theta <= 1, theta
-  new_strategy = random.choices([strategy_role_model, strategy_picked_for_update], weights=[theta, 1-theta])[0]
 
-  new_strategy = possibly_mutate(new_strategy, N, nTFT, nALLD, mu, back_mu)
+  new_strategy = strategy_picked_for_update
+  if random.random() < theta:
+    new_strategy = possibly_mutate(strategy_role_model, N, nTFT, nALLD, mu, back_mu)
+
   return (
     nALLC + int(new_strategy == Strategy.AlwaysCooperate) - int(strategy_picked_for_update == Strategy.AlwaysCooperate),
     nTFT + int(new_strategy == Strategy.TitForTat) - int(strategy_picked_for_update == Strategy.TitForTat),

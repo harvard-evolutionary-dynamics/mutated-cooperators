@@ -42,22 +42,22 @@ def calculate_payoffs(N: int, nALLC: int, nTFT: int, M: Payoffs):
     nALLD/(N-1) * M[(Strategy.AlwaysCooperate, Strategy.AlwaysDefect)]
     + nTFT/(N-1) * M[(Strategy.AlwaysCooperate, Strategy.TitForTat)]
     + (nALLC-1)/(N-1) * M[(Strategy.AlwaysCooperate, Strategy.AlwaysCooperate)]
-  )
+  ) if nALLC > 0 else -np.inf 
   payoff_TFT = (
     nALLD/(N-1) * M[(Strategy.TitForTat, Strategy.AlwaysDefect)]
     + (nTFT-1)/(N-1) * M[(Strategy.TitForTat, Strategy.TitForTat)]
     + nALLC/(N-1) * M[(Strategy.TitForTat, Strategy.AlwaysCooperate)]
-  )
+  ) if nTFT > 0 else -np.inf
   payoff_ALLD = (
     (nALLD-1)/(N-1) * M[(Strategy.AlwaysDefect, Strategy.AlwaysDefect)]
     + nTFT/(N-1) * M[(Strategy.AlwaysDefect, Strategy.TitForTat)]
     + nALLC/(N-1) * M[(Strategy.AlwaysDefect, Strategy.AlwaysCooperate)]
-  )
+  ) if nALLD > 0 else -np.inf
 
   return (payoff_ALLC, payoff_TFT, payoff_ALLD)
 
 def pick_individual_with_payoffs(N: int, nALLC: int, nTFT: int, M: Payoffs):
-  calculate_payoffs(N, nALLC, nTFT, M)
+  # calculate_payoffs(N, nALLC, nTFT, M)
   unnormalized_fitnesses = np.array(list(map(np.exp, calculate_payoffs(N, nALLC, nTFT, M))))
   total_fitness = sum(unnormalized_fitnesses)
   return random.choices(population=STRATEGIES, weights=unnormalized_fitnesses / total_fitness)[0]
@@ -112,6 +112,7 @@ def imitation(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, back_mu: flo
 
   strategy_picked_for_update = pick_individual_uniformly(N, nALLC, nTFT, nALLD)
   strategy_role_model = pick_individual_with_payoffs(N, nALLC, nTFT, M)
+  # print(nALLC, nTFT, nALLD, strategy_picked_for_update, strategy_role_model)
 
   # Conditional mutation.
   new_strategy = possibly_mutate(strategy_role_model, N, nTFT, nALLD, mu, back_mu)
@@ -230,42 +231,42 @@ def main():
   INTERVALS = 10
   TRIALS = 1000
   NUM_WORKERS = 8
-  DYNAMIC = 'death-birth'
+  DYNAMIC = 'pairwise-comparison'
   data = []
   TICKS = np.linspace(0, 1, INTERVALS, endpoint=True) 
   TICK_LABELS = [('0' if tick == 0 else '1' if tick == 1 else '') for tick in TICKS]
   for N in (10,):
     mus = TICKS
-    back_mus = TICKS
-    # mutations = [(mu, 0) for mu in mus]
-    mutations = list(itertools.product(mus, back_mus))
+    # back_mus = TICKS
+    mutations = [(mu, 0) for mu in mus]
+    # mutations = list(itertools.product(mus, back_mus))
     print(mutations)
     with Pool(NUM_WORKERS) as p:
       for datum in p.starmap(functools.partial(simulate, N, TRIALS, DYNAMICS[DYNAMIC]), mutations):
         data.append(datum)
 
   df = pd.DataFrame(data, columns=['N', 'mu', 'back_mu', 'fp_ALLD', 'fp_ALLC_given_ALLD_extinct', 'fraction_ALLC_when_ALLD_extinct'])
-
+  print(df)
   fig, ax = plt.subplots(1,3)
   for i, value in enumerate(('fp_ALLD', 'fp_ALLC_given_ALLD_extinct', 'fraction_ALLC_when_ALLD_extinct')):
-    sns.heatmap(
-      data=df.pivot(index='back_mu', columns='mu', values=value).sort_index(ascending=False, level=0),
-      ax=ax[i],
-      xticklabels=TICK_LABELS,
-      yticklabels=list(reversed(TICK_LABELS)),
-      vmin=0,
-      vmax=1,
-      cbar_kws={'label': value, "shrink": 0.25}
-    ) 
-    ax[i].axis('scaled')
-    # ax[i].set_ylim((0, 1))
-  # sns.lineplot(df, ax=ax[1], x='mu', y='fp_ALLC_given_ALLD_extinct', hue='N', linestyle='--', marker='o', legend=False)
+    # sns.heatmap(
+    #   data=df.pivot(index='back_mu', columns='mu', values=value).sort_index(ascending=False, level=0),
+    #   ax=ax[i],
+    #   xticklabels=TICK_LABELS,
+    #   yticklabels=list(reversed(TICK_LABELS)),
+    #   vmin=0,
+    #   vmax=1,
+    #   cbar_kws={'label': value, "shrink": 0.25}
+    # ) 
+    # ax[i].axis('scaled')
+    sns.lineplot(df, ax=ax[i], x='mu', y=value, hue='N', linestyle='--', marker='o', legend=False)
+    ax[i].set_ylim((0, 1))
   # sns.lineplot(df, ax=ax[2], x='mu', y='fraction_ALLC_when_ALLD_extinct', hue='N', linestyle='--', marker='o', legend=False)
   # for i in range(3):
 
   plt.tight_layout()
   fig.suptitle(f"{DYNAMIC=}, {N=}, {TRIALS=}")
-  fig.savefig(f'figs/M-fp_ALLD-saptarshi-{TRIALS=}-db-fraction-back-mu.png', dpi=300)
+  fig.savefig(f'figs/saptarshi-custom.png', dpi=300)
   plt.show()
 
 if __name__ == '__main__':

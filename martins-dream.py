@@ -229,9 +229,9 @@ import itertools
 
 def main():
   INTERVALS = 10
-  TRIALS = 1000
+  TRIALS = 10000
   NUM_WORKERS = 8
-  DYNAMIC = 'pairwise-comparison'
+  DYNAMIC = 'death-birth'
   data = []
   TICKS = np.linspace(0, 1, INTERVALS, endpoint=True) 
   TICK_LABELS = [('0' if tick == 0 else '1' if tick == 1 else '') for tick in TICKS]

@@ -57,13 +57,14 @@ def calculate_payoffs(N: int, nALLC: int, nTFT: int, M: Payoffs):
   return (payoff_ALLC, payoff_TFT, payoff_ALLD)
 
 def pick_individual_with_payoffs(N: int, nALLC: int, nTFT: int, M: Payoffs):
-  # calculate_payoffs(N, nALLC, nTFT, M)
-  unnormalized_fitnesses = np.array(list(map(np.exp, calculate_payoffs(N, nALLC, nTFT, M))))
-  total_fitness = sum(unnormalized_fitnesses)
-  return random.choices(population=STRATEGIES, weights=unnormalized_fitnesses / total_fitness)[0]
+  unnormalized_fitnesses = (
+    np.array((nALLC, nTFT, N-nALLC-nTFT)) *
+    np.array(list(map(np.exp, calculate_payoffs(N, nALLC, nTFT, M))))
+  )
+  return random.choices(population=STRATEGIES, weights=unnormalized_fitnesses)[0]
 
 def pick_individual_uniformly(N: int, nALLC: int, nTFT: int, nALLD):
-  return random.choices(population=STRATEGIES, weights=np.array([nALLC, nTFT, nALLD])/N)[0]
+  return random.choices(population=STRATEGIES, weights=np.array([nALLC, nTFT, nALLD]))[0]
 
 def possibly_mutate(strategy: Strategy, N: int, nTFT: int, nALLD: int, mu: float, back_mu: float):
   if strategy == Strategy.AlwaysCooperate and nALLD > 0:
@@ -160,6 +161,27 @@ def birth_death(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, back_mu: f
     nTFT + int(new_strategy == Strategy.TitForTat) - int(strategy_to_die == Strategy.TitForTat),
   )
 
+# import networkx as nx
+# 
+# def birth_death_graph(G: nx.DiGraph, individuals: Dict[Any, Strategy], M: Payoffs, mu: float, back_mu: float):
+#   assert 0 <= mu <= 1, mu
+#   assert 0 <= back_mu <= 1, back_mu
+#   assert len(individuals) == len(G)
+# 
+# 
+#   strategy_to_give_birth = pick_individual_with_payoffs(N, nALLC, nTFT, M)
+#   strategy_to_die = pick_individual_uniformly(
+#     N-1,
+#     nALLC-int(strategy_to_give_birth==Strategy.AlwaysCooperate),
+#     nTFT-int(strategy_to_give_birth==Strategy.TitForTat),
+#     nALLD-int(strategy_to_give_birth==Strategy.AlwaysDefect),
+#   )
+#   new_strategy = possibly_mutate(strategy_to_give_birth, N, nTFT, nALLD, mu, back_mu)
+#   return (
+#     nALLC + int(new_strategy == Strategy.AlwaysCooperate) - int(strategy_to_die == Strategy.AlwaysCooperate),
+#     nTFT + int(new_strategy == Strategy.TitForTat) - int(strategy_to_die == Strategy.TitForTat),
+#   )
+
 
 def wrong(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, back_mu: float):
   assert 0 <= mu <= 1, mu
@@ -188,9 +210,12 @@ def wrong(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, back_mu: float):
   )
 
 
+from collections import defaultdict
+
 def simulate(N: int, TRIALS: int, dynamics, mu: float, back_mu: float):
   print('start', mu, back_mu)
   fixated_ALLD = []
+  fixated = defaultdict(list)
   fixated_ALLC_given_ALLD_extinct = []
   fractions_ALLC_when_ALLD_extinction = []
   for trial in range(TRIALS):
@@ -211,14 +236,20 @@ def simulate(N: int, TRIALS: int, dynamics, mu: float, back_mu: float):
     # input()
 
     fixated_ALLD.append(nALLD == N)
+    for strategy, nStrategy in zip(STRATEGIES, (nALLC, nTFT, nALLD)):
+      fixated[strategy].append(nStrategy == N)
     if nALLD == 0:
       fixated_ALLC_given_ALLD_extinct.append(nALLC == N)
 
+
   fp_ALLD = np.mean(fixated_ALLD)
+  fp: Dict[Strategy, float] = {}
+  for strategy in STRATEGIES:
+    fp[strategy] = np.mean(fixated[strategy])
   fp_ALLC_given_ALLD_extinct = np.mean(fixated_ALLC_given_ALLD_extinct)
   fraction_ALLC_when_ALLD_extinction = np.mean(fractions_ALLC_when_ALLD_extinction)
   print('end', mu, back_mu)
-  return (N, mu, back_mu, fp_ALLD, fp_ALLC_given_ALLD_extinct, fraction_ALLC_when_ALLD_extinction)
+  return (N, mu, back_mu, *(fp[strategy] for strategy in STRATEGIES), fp_ALLC_given_ALLD_extinct, fraction_ALLC_when_ALLD_extinction)
 
 
 DYNAMICS = {
@@ -231,9 +262,9 @@ DYNAMICS = {
 
 
 import itertools
-INTERVALS = 20
-TRIALS = 10000
-NUM_WORKERS = 8
+INTERVALS = 10
+TRIALS = 1000
+NUM_WORKERS = 1
 DYNAMIC = 'birth-death'
 N = 10
 
@@ -254,12 +285,12 @@ def collect_data():
     for datum in itertools.starmap(functools.partial(simulate, N, TRIALS, DYNAMICS[DYNAMIC]), mutations):
       data.append(datum)
 
-  return pd.DataFrame(data, columns=['N', 'mu', 'back_mu', 'fp_ALLD', 'fp_ALLC_given_ALLD_extinct', 'fraction_ALLC_when_ALLD_extinct'])
+  return pd.DataFrame(data, columns=['N', 'mu', 'back_mu', 'fp_ALLC', 'fp_TFT', 'fp_ALLD', 'fp_ALLC_given_ALLD_extinct', 'fraction_ALLC_when_ALLD_extinct'])
 
 def stack_plot(df: pd.DataFrame):
-  df = df[['fp_ALLD', 'fp_ALLC_given_ALLD_extinct', 'mu']]
-  df['fp_ALLC'] = df['fp_ALLC_given_ALLD_extinct'] * (1-df['fp_ALLD'])
-  df['fp_TFT'] = 1-(df['fp_ALLC'] + df['fp_ALLD'])
+  # df = df[['fp_ALLD', 'fp_ALLC_given_ALLD_extinct', 'mu']]
+  # df['fp_ALLC'] = df['fp_ALLC_given_ALLD_extinct'] * (1-df['fp_ALLD'])
+  # df['fp_TFT'] = 1-(df['fp_ALLC'] + df['fp_ALLD'])
   df = df.drop(columns=['fp_ALLC_given_ALLD_extinct'])
   df = df[['mu', 'fp_ALLD', 'fp_TFT', 'fp_ALLC']]
   df = df.rename(columns={'fp_ALLD': 'ALLD', 'fp_TFT': 'TFT', 'fp_ALLC': 'ALLC'})
@@ -315,7 +346,7 @@ def store_data(df: pd.DataFrame):
   with Path(get_data_file_name()).open('w') as f:
     df.to_json(f, orient='records')
 
-USE_EXISTING_DATA = True
+USE_EXISTING_DATA = False
 def main():
   df = (load_data if USE_EXISTING_DATA else collect_data)()
   store_data(df)

@@ -10,6 +10,7 @@ import operator
 from enum import Enum
 from multiprocessing import Pool
 from typing import *
+from collections import Counter
 
 class Strategy(Enum):
   AlwaysCooperate = 'ALLC'
@@ -161,26 +162,51 @@ def birth_death(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, back_mu: f
     nTFT + int(new_strategy == Strategy.TitForTat) - int(strategy_to_die == Strategy.TitForTat),
   )
 
-# import networkx as nx
-# 
-# def birth_death_graph(G: nx.DiGraph, individuals: Dict[Any, Strategy], M: Payoffs, mu: float, back_mu: float):
-#   assert 0 <= mu <= 1, mu
-#   assert 0 <= back_mu <= 1, back_mu
-#   assert len(individuals) == len(G)
-# 
-# 
-#   strategy_to_give_birth = pick_individual_with_payoffs(N, nALLC, nTFT, M)
-#   strategy_to_die = pick_individual_uniformly(
-#     N-1,
-#     nALLC-int(strategy_to_give_birth==Strategy.AlwaysCooperate),
-#     nTFT-int(strategy_to_give_birth==Strategy.TitForTat),
-#     nALLD-int(strategy_to_give_birth==Strategy.AlwaysDefect),
-#   )
-#   new_strategy = possibly_mutate(strategy_to_give_birth, N, nTFT, nALLD, mu, back_mu)
-#   return (
-#     nALLC + int(new_strategy == Strategy.AlwaysCooperate) - int(strategy_to_die == Strategy.AlwaysCooperate),
-#     nTFT + int(new_strategy == Strategy.TitForTat) - int(strategy_to_die == Strategy.TitForTat),
-#   )
+import networkx as nx
+
+def calculate_payoff_graph(G: nx.DiGraph, strategies: Dict[Any, Strategy], individual: Any, M: Payoffs):
+  out_degree = G.out_degree(individual)
+  return np.exp(
+    sum(
+      M[strategies[individual], strategies[neighbor_individual]] / out_degree
+      for _, neighbor_individual in G.out_edges(individual)
+    )
+  )
+
+def birth_death_graph(G_games: nx.DiGraph, G_reproduction: nx.DiGraph, strategies: Dict[Any, Strategy], M: Payoffs, mu: float, back_mu: float):
+  assert 0 <= mu <= 1, mu
+  assert 0 <= back_mu <= 1, back_mu
+  if back_mu > 0:
+    raise NotImplementedError('back_mu not incorporated yet')
+  assert len(strategies) == len(G_games)
+  assert len(G_games) == len(G_reproduction)
+
+  # pick birther.
+  payoffs = {
+    individual: calculate_payoff_graph(G_games, strategies, individual, M)
+    for individual in G_games.nodes()
+  }
+  # print(payoffs)
+  # input()
+  individual_to_give_birth = random.choices(
+    population=list(G_games.nodes()),
+    weights=[payoffs[individual] for individual in G_games.nodes()],
+  )[0]
+
+  # pick death location.
+  # print(individual_to_give_birth)
+  # print(G_reproduction.out_edges(individual_to_give_birth))
+  individual_to_die = random.choices([neighbor_individual for _, neighbor_individual in G_reproduction.out_edges(individual_to_give_birth)])[0]
+
+  # possibly mutate.
+  new_strategy = strategies[individual_to_give_birth]
+  if new_strategy == Strategy.AlwaysCooperate and Strategy.AlwaysDefect in strategies.values():
+    new_strategy = random.choices(population=[Strategy.TitForTat, new_strategy], weights=[mu, 1-mu])[0]
+  if new_strategy == Strategy.TitForTat and Strategy.AlwaysDefect in strategies.values() and Counter(strategies.values()).get(Strategy.TitForTat, 0) < N:
+    new_strategy = random.choices(population=[Strategy.AlwaysCooperate, new_strategy], weights=[back_mu, 1-back_mu])[0]
+
+  strategies[individual_to_die] = new_strategy
+  return strategies
 
 
 def wrong(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, back_mu: float):
@@ -211,6 +237,31 @@ def wrong(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, back_mu: float):
 
 
 from collections import defaultdict
+import copy
+
+def simulate_graph(G_games: nx.DiGraph, G_reproduction: nx.DiGraph, strategies: Dict[Any, Strategy], TRIALS: int, graph_dynamics, mu: float, back_mu: float):
+  N = len(G_games)
+  print('start', mu, back_mu)
+  fixated = defaultdict(list)
+
+  for trial in range(TRIALS):
+    strategies_p = copy.deepcopy(strategies)
+    while len(set(strategies_p.values())) > 1:
+      strategies_p = graph_dynamics(G_games, G_reproduction, strategies_p, M, mu=mu, back_mu=back_mu)
+
+    counts = Counter(strategies_p.values())
+    # print(counts)
+    for strategy, nStrategy in zip(STRATEGIES, (counts[strategy] for strategy in STRATEGIES)):
+      fixated[strategy].append(nStrategy == N)
+
+
+  fp: Dict[Strategy, float] = {}
+  for strategy in STRATEGIES:
+    fp[strategy] = np.mean(fixated[strategy])
+
+  print('end', mu, back_mu)
+  return (N, mu, back_mu, *(fp[strategy] for strategy in STRATEGIES))
+
 
 def simulate(N: int, TRIALS: int, dynamics, mu: float, back_mu: float):
   print('start', mu, back_mu)
@@ -257,16 +308,35 @@ DYNAMICS = {
   'pairwise-comparison': pairwise_comparison,
   'birth-death': birth_death,
   'death-birth': death_birth,
+  'birth-death-graph': birth_death_graph,
   'wrong': wrong,
 }
-
 
 import itertools
 INTERVALS = 10
 TRIALS = 1000
-NUM_WORKERS = 1
-DYNAMIC = 'birth-death'
+NUM_WORKERS = 8
+DYNAMIC = 'birth-death-graph'
 N = 10
+
+def collect_data_graph(G_games: nx.DiGraph, G_reproduction: nx.DiGraph, strategies: Dict[Any, Strategy]):
+  data = []
+  TICKS = np.linspace(0, 1, INTERVALS, endpoint=True)
+  TICK_LABELS = [('0' if tick == 0 else '1' if tick == 1 else '') for tick in TICKS]
+  mus = TICKS
+  # back_mus = TICKS
+  mutations = [(mu, 0) for mu in mus]
+  # mutations = list(itertools.product(mus, back_mus))
+  # print(mutations)
+  if NUM_WORKERS > 1:
+    with Pool(NUM_WORKERS) as p:
+      for datum in p.starmap(functools.partial(simulate_graph, G_games, G_reproduction, strategies, TRIALS, DYNAMICS[DYNAMIC]), mutations):
+        data.append(datum)
+  else:
+    for datum in itertools.starmap(functools.partial(simulate_graph, G_games, G_reproduction, strategies, TRIALS, DYNAMICS[DYNAMIC]), mutations):
+      data.append(datum)
+
+  return pd.DataFrame(data, columns=['N', 'mu', 'back_mu', 'fp_ALLC', 'fp_TFT', 'fp_ALLD'])
 
 def collect_data():
   data = []
@@ -291,7 +361,7 @@ def stack_plot(df: pd.DataFrame):
   # df = df[['fp_ALLD', 'fp_ALLC_given_ALLD_extinct', 'mu']]
   # df['fp_ALLC'] = df['fp_ALLC_given_ALLD_extinct'] * (1-df['fp_ALLD'])
   # df['fp_TFT'] = 1-(df['fp_ALLC'] + df['fp_ALLD'])
-  df = df.drop(columns=['fp_ALLC_given_ALLD_extinct'])
+  df = df.drop(columns=['fp_ALLC_given_ALLD_extinct'], errors='ignore')
   df = df[['mu', 'fp_ALLD', 'fp_TFT', 'fp_ALLC']]
   df = df.rename(columns={'fp_ALLD': 'ALLD', 'fp_TFT': 'TFT', 'fp_ALLC': 'ALLC'})
   ax = df.set_index('mu').plot(kind='area')
@@ -302,30 +372,6 @@ def stack_plot(df: pd.DataFrame):
   fig.suptitle(f"{DYNAMIC=}, {N=}, {TRIALS=}, {INTERVALS=}")
   fig.savefig(get_plot_file_name(), dpi=300)
   plt.show()
-
-def plot(df: pd.DataFrame): ...
-  # print(df)
-  # fig, ax = plt.subplots(1,3)
-  # for i, value in enumerate(('fp_ALLD', 'fp_ALLC_given_ALLD_extinct', 'fraction_ALLC_when_ALLD_extinct')):
-    # sns.heatmap(
-    #   data=df.pivot(index='back_mu', columns='mu', values=value).sort_index(ascending=False, level=0),
-    #   ax=ax[i],
-    #   xticklabels=TICK_LABELS,
-    #   yticklabels=list(reversed(TICK_LABELS)),
-    #   vmin=0,
-    #   vmax=1,
-    #   cbar_kws={'label': value, "shrink": 0.25}
-    # ) 
-    # ax[i].axis('scaled')
-    # sns.lineplot(df, ax=ax[i], x='mu', y=value, hue='N', linestyle='--', marker='o', legend=False)
-    # ax[i].set_ylim((0, 1))
-  # sns.lineplot(df, ax=ax[2], x='mu', y='fraction_ALLC_when_ALLD_extinct', hue='N', linestyle='--', marker='o', legend=False)
-  # for i in range(3):
-
-  # plt.tight_layout()
-  # fig.suptitle(f"{DYNAMIC=}, {N=}, {TRIALS=}")
-  # fig.savefig(f'figs/saptarshi-custom.png', dpi=300)
-  # plt.show()
 
 def get_file_name() -> str:
   return f'DYNAMIC:{DYNAMIC}-N{N}-TRIALS{TRIALS}-INTERVALS{INTERVALS}'
@@ -342,6 +388,9 @@ def load_data():
   with Path(get_data_file_name()).open('r') as f:
     return pd.read_json(f, orient='records')
 
+def load_data_graph(G_games: nx.DiGraph, G_reproduction: nx.DiGraph, strategies: Dict[Any, Strategy]):
+  raise NotImplementedError()
+
 def store_data(df: pd.DataFrame):
   with Path(get_data_file_name()).open('w') as f:
     df.to_json(f, orient='records')
@@ -352,5 +401,20 @@ def main():
   store_data(df)
   stack_plot(df)
 
+def main_graph():
+  G_games: nx.DiGraph = nx.cycle_graph(N, create_using=nx.DiGraph)
+  G_reproduction: nx.DiGraph = nx.cycle_graph(N, create_using=nx.DiGraph)
+  for G in (G_games, G_reproduction):
+    for u, v in G.edges():
+      G.add_edge(v, u)
+  strategies = {}
+  for idx in range(N-1):
+    strategies[idx] = Strategy.AlwaysCooperate
+  strategies[N-1] = Strategy.AlwaysDefect
+
+  df = (load_data_graph if USE_EXISTING_DATA else collect_data_graph)(G_games, G_reproduction, strategies)
+  # store_data(df)
+  stack_plot(df)
+
 if __name__ == '__main__':
-  main()
+  main_graph()

@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Game parameters:
-N = 10
+N = 50
 b = 5
 c = 1
 
@@ -38,6 +38,12 @@ for mu in mus:
             # ALLC, ALLD, TFT
             mutation_matrix = np.array([[1-mu, 0,mu],[0,1,0],[0,0,1]])
         
+        print(bd.analytical_fixation_probability(
+            k=1,
+            N=N,
+            payoff_matrix=payoff_matrix[:2,:2]
+        ))
+        input()
         # number of dominations counted per strategy
         nb_dominations = np.zeros(len(payoff_matrix))
         for iterate_game in range(nb_games):

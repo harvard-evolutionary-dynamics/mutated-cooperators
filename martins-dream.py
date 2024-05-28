@@ -11,6 +11,7 @@ from enum import Enum
 from multiprocessing import Pool
 from typing import *
 from collections import Counter
+from customlogger import logger
 
 class Strategy(Enum):
   AlwaysCooperate = 'ALLC'
@@ -76,7 +77,7 @@ def possibly_mutate(strategy: Strategy, N: int, nTFT: int, nALLD: int, mu: float
   return strategy
 
 def pairwise_comparison(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, back_mu: float):
-  # print(N, nALLC, nTFT, M, mu, back_mu)
+  # logger.info(N, nALLC, nTFT, M, mu, back_mu)
   assert 0 <= mu <= 1, mu
   nALLD = N-nALLC-nTFT
   assert nALLC + nTFT + nALLD == N
@@ -114,7 +115,7 @@ def imitation(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, back_mu: flo
 
   strategy_picked_for_update = pick_individual_uniformly(N, nALLC, nTFT, nALLD)
   strategy_role_model = pick_individual_with_payoffs(N, nALLC, nTFT, M)
-  # print(nALLC, nTFT, nALLD, strategy_picked_for_update, strategy_role_model)
+  # logger.info(nALLC, nTFT, nALLD, strategy_picked_for_update, strategy_role_model)
 
   # Conditional mutation.
   new_strategy = possibly_mutate(strategy_role_model, N, nTFT, nALLD, mu, back_mu)
@@ -186,16 +187,12 @@ def birth_death_graph(G_games: nx.DiGraph, G_reproduction: nx.DiGraph, strategie
     individual: calculate_payoff_graph(G_games, strategies, individual, M)
     for individual in G_games.nodes()
   }
-  # print(payoffs)
-  # input()
   individual_to_give_birth = random.choices(
     population=list(G_games.nodes()),
     weights=[payoffs[individual] for individual in G_games.nodes()],
   )[0]
 
   # pick death location.
-  # print(individual_to_give_birth)
-  # print(G_reproduction.out_edges(individual_to_give_birth))
   individual_to_die = random.choices([neighbor_individual for _, neighbor_individual in G_reproduction.out_edges(individual_to_give_birth)])[0]
 
   # possibly mutate.
@@ -241,7 +238,7 @@ import copy
 
 def simulate_graph(G_games: nx.DiGraph, G_reproduction: nx.DiGraph, strategies: Dict[Any, Strategy], TRIALS: int, graph_dynamics, mu: float, back_mu: float):
   N = len(G_games)
-  print('start', mu, back_mu)
+  logger.info(('start', mu, back_mu))
   fixated = defaultdict(list)
 
   for trial in range(TRIALS):
@@ -250,7 +247,6 @@ def simulate_graph(G_games: nx.DiGraph, G_reproduction: nx.DiGraph, strategies: 
       strategies_p = graph_dynamics(G_games, G_reproduction, strategies_p, M, mu=mu, back_mu=back_mu)
 
     counts = Counter(strategies_p.values())
-    # print(counts)
     for strategy, nStrategy in zip(STRATEGIES, (counts[strategy] for strategy in STRATEGIES)):
       fixated[strategy].append(nStrategy == N)
 
@@ -259,12 +255,12 @@ def simulate_graph(G_games: nx.DiGraph, G_reproduction: nx.DiGraph, strategies: 
   for strategy in STRATEGIES:
     fp[strategy] = np.mean(fixated[strategy])
 
-  print('end', mu, back_mu)
+  logger.info(('end', mu, back_mu))
   return (N, mu, back_mu, *(fp[strategy] for strategy in STRATEGIES))
 
 
 def simulate(N: int, TRIALS: int, dynamics, mu: float, back_mu: float):
-  print('start', mu, back_mu)
+  logger.info(('start', mu, back_mu))
   fixated_ALLD = []
   fixated = defaultdict(list)
   fixated_ALLC_given_ALLD_extinct = []
@@ -274,17 +270,12 @@ def simulate(N: int, TRIALS: int, dynamics, mu: float, back_mu: float):
     nTFT = 0
     nALLD = 1
     tracked_ALLD_extinction = False
-    # print(f'trial #{trial}:')
     while all(nX < N for nX in (nALLC, nTFT, nALLD)):
-      # print(f'{nALLC=}, {nTFT=}, {nALLD=}')
-      # input()
       nALLCp, nTFTp = dynamics(N, nALLC, nTFT, M, mu=mu, back_mu=back_mu)
       nALLC, nTFT, nALLD = (nALLCp, nTFTp, N-(nALLCp + nTFTp))
       if nALLD == 0 and not tracked_ALLD_extinction:
         fractions_ALLC_when_ALLD_extinction.append(nALLC / N)
         tracked_ALLD_extinction = True
-    # print(f'{nALLC=}, {nTFT=}, {nALLD=}')
-    # input()
 
     fixated_ALLD.append(nALLD == N)
     for strategy, nStrategy in zip(STRATEGIES, (nALLC, nTFT, nALLD)):
@@ -299,7 +290,7 @@ def simulate(N: int, TRIALS: int, dynamics, mu: float, back_mu: float):
     fp[strategy] = np.mean(fixated[strategy])
   fp_ALLC_given_ALLD_extinct = np.mean(fixated_ALLC_given_ALLD_extinct)
   fraction_ALLC_when_ALLD_extinction = np.mean(fractions_ALLC_when_ALLD_extinction)
-  print('end', mu, back_mu)
+  logger.info(('end', mu, back_mu))
   return (N, mu, back_mu, *(fp[strategy] for strategy in STRATEGIES), fp_ALLC_given_ALLD_extinct, fraction_ALLC_when_ALLD_extinction)
 
 
@@ -316,7 +307,7 @@ import itertools
 INTERVALS = 10
 TRIALS = 1000
 NUM_WORKERS = 8
-DYNAMIC = 'birth-death-graph'
+DYNAMIC = 'birth-death'
 N = 10
 
 def collect_data_graph(G_games: nx.DiGraph, G_reproduction: nx.DiGraph, strategies: Dict[Any, Strategy]):
@@ -327,7 +318,6 @@ def collect_data_graph(G_games: nx.DiGraph, G_reproduction: nx.DiGraph, strategi
   # back_mus = TICKS
   mutations = [(mu, 0) for mu in mus]
   # mutations = list(itertools.product(mus, back_mus))
-  # print(mutations)
   if NUM_WORKERS > 1:
     with Pool(NUM_WORKERS) as p:
       for datum in p.starmap(functools.partial(simulate_graph, G_games, G_reproduction, strategies, TRIALS, DYNAMICS[DYNAMIC]), mutations):
@@ -346,7 +336,6 @@ def collect_data():
   # back_mus = TICKS
   mutations = [(mu, 0) for mu in mus]
   # mutations = list(itertools.product(mus, back_mus))
-  # print(mutations)
   if NUM_WORKERS > 1:
     with Pool(NUM_WORKERS) as p:
       for datum in p.starmap(functools.partial(simulate, N, TRIALS, DYNAMICS[DYNAMIC]), mutations):
@@ -357,64 +346,71 @@ def collect_data():
 
   return pd.DataFrame(data, columns=['N', 'mu', 'back_mu', 'fp_ALLC', 'fp_TFT', 'fp_ALLD', 'fp_ALLC_given_ALLD_extinct', 'fraction_ALLC_when_ALLD_extinct'])
 
-def stack_plot(df: pd.DataFrame):
+def stack_plot(dff: pd.DataFrame, **kwargs):
   # df = df[['fp_ALLD', 'fp_ALLC_given_ALLD_extinct', 'mu']]
   # df['fp_ALLC'] = df['fp_ALLC_given_ALLD_extinct'] * (1-df['fp_ALLD'])
   # df['fp_TFT'] = 1-(df['fp_ALLC'] + df['fp_ALLD'])
-  df = df.drop(columns=['fp_ALLC_given_ALLD_extinct'], errors='ignore')
+  df = dff.drop(columns=['fp_ALLC_given_ALLD_extinct'], errors='ignore')
   df = df[['mu', 'fp_ALLD', 'fp_TFT', 'fp_ALLC']]
   df = df.rename(columns={'fp_ALLD': 'ALLD', 'fp_TFT': 'TFT', 'fp_ALLC': 'ALLC'})
   ax = df.set_index('mu').plot(kind='area')
+  dff[['mu', 'fraction_ALLC_when_ALLD_extinct']].set_index('mu').plot.line(ax=ax)
   ax.set_ylabel(r'Fixation probability, $p$')
   ax.set_xlabel(r'Mutation rate, $\mu$')
   plt.legend(loc='upper right')
   fig = ax.get_figure()
   fig.suptitle(f"{DYNAMIC=}, {N=}, {TRIALS=}, {INTERVALS=}")
-  fig.savefig(get_plot_file_name(), dpi=300)
+  fig.savefig(get_plot_file_name(**kwargs), dpi=300)
   plt.show()
 
-def get_file_name() -> str:
-  return f'DYNAMIC:{DYNAMIC}-N{N}-TRIALS{TRIALS}-INTERVALS{INTERVALS}'
+def stringify_kwargs(**kwargs):
+  return '-'.join(f'{k}:{v}' for k, v in sorted(kwargs.items()))
 
-def get_plot_file_name() -> str:
-  return f'figs/{get_file_name()}.png'
+def get_file_name(**kwargs) -> str:
+  x = '-' if kwargs else ''
+  return f'DYNAMIC:{DYNAMIC}-N{N}-TRIALS{TRIALS}-INTERVALS{INTERVALS}{x}{stringify_kwargs(**kwargs)}'
 
-def get_data_file_name() -> str:
-  return f'data/{get_file_name()}.json'
+def get_plot_file_name(**kwargs) -> str:
+  return f'figs/{get_file_name(**kwargs)}.png'
+
+def get_data_file_name(**kwargs) -> str:
+  return f'data/{get_file_name(**kwargs)}.json'
 
 from pathlib import Path
 
-def load_data():
-  with Path(get_data_file_name()).open('r') as f:
+def load_data(**kwargs):
+  with Path(get_data_file_name(**kwargs)).open('r') as f:
     return pd.read_json(f, orient='records')
 
-def load_data_graph(G_games: nx.DiGraph, G_reproduction: nx.DiGraph, strategies: Dict[Any, Strategy]):
-  raise NotImplementedError()
-
-def store_data(df: pd.DataFrame):
-  with Path(get_data_file_name()).open('w') as f:
+def store_data(df: pd.DataFrame, **kwargs):
+  with Path(get_data_file_name(**kwargs)).open('w+') as f:
     df.to_json(f, orient='records')
 
-USE_EXISTING_DATA = False
 def main():
   df = (load_data if USE_EXISTING_DATA else collect_data)()
   store_data(df)
   stack_plot(df)
 
 def main_graph():
-  G_games: nx.DiGraph = nx.cycle_graph(N, create_using=nx.DiGraph)
-  G_reproduction: nx.DiGraph = nx.cycle_graph(N, create_using=nx.DiGraph)
-  for G in (G_games, G_reproduction):
-    for u, v in G.edges():
-      G.add_edge(v, u)
+  G_reproduction: nx.DiGraph = nx.to_directed(nx.path_graph(N))
+  G_games: nx.DiGraph = nx.to_directed(nx.path_graph(N))
+  G_reproduction_name = 'line'
+  G_games_name = 'line'
+
   strategies = {}
-  for idx in range(N-1):
-    strategies[idx] = Strategy.AlwaysCooperate
-  strategies[N-1] = Strategy.AlwaysDefect
+  for node in list(G_games.nodes())[:-1]:
+    strategies[node] = Strategy.AlwaysCooperate
+  strategies[list(G_games.nodes())[-1]] = Strategy.AlwaysDefect
 
-  df = (load_data_graph if USE_EXISTING_DATA else collect_data_graph)(G_games, G_reproduction, strategies)
-  # store_data(df)
-  stack_plot(df)
+  kwargs = {
+    'GAME_GRAPH': G_games_name,
+    'REPRODUCTION_GRAPH': G_reproduction_name,
+  }
 
+  df = load_data(**kwargs) if USE_EXISTING_DATA else collect_data_graph(G_games, G_reproduction, strategies)
+  store_data(df, **kwargs)
+  stack_plot(df, **kwargs)
+
+USE_EXISTING_DATA = True
 if __name__ == '__main__':
-  main_graph()
+  main()

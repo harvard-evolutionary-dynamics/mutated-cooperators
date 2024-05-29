@@ -17,9 +17,9 @@ class Strategy(Enum):
   AlwaysCooperate = 'ALLC'
   TitForTat = 'TFT'
   AlwaysDefect = 'ALLD'
-  WinStayLoseShift = 'WSLS'
+  X = 'WSLS'
 
-STRATEGIES = [Strategy.AlwaysCooperate, Strategy.TitForTat, Strategy.WinStayLoseShift, Strategy.AlwaysDefect]
+STRATEGIES = [Strategy.AlwaysCooperate, Strategy.TitForTat, Strategy.X, Strategy.AlwaysDefect]
 
 B = 5
 C = 1
@@ -31,42 +31,42 @@ M: Payoffs = {
   (Strategy.TitForTat, Strategy.TitForTat): (B-C)/2,
   (Strategy.TitForTat, Strategy.AlwaysCooperate): B-C,
   (Strategy.TitForTat, Strategy.AlwaysDefect): 0,
-  (Strategy.TitForTat, Strategy.WinStayLoseShift): (B-C)/2,
+  (Strategy.TitForTat, Strategy.X): 0,
   (Strategy.AlwaysCooperate, Strategy.TitForTat): B-C,
   (Strategy.AlwaysCooperate, Strategy.AlwaysCooperate): B-C,
   (Strategy.AlwaysCooperate, Strategy.AlwaysDefect): -C,
-  (Strategy.AlwaysCooperate, Strategy.WinStayLoseShift): (B-2*C)/2,
+  (Strategy.AlwaysCooperate, Strategy.X): 0,
   (Strategy.AlwaysDefect, Strategy.TitForTat): 0,
   (Strategy.AlwaysDefect, Strategy.AlwaysCooperate): B,
   (Strategy.AlwaysDefect, Strategy.AlwaysDefect): 0,
-  (Strategy.AlwaysDefect, Strategy.WinStayLoseShift): B/2,
-  (Strategy.WinStayLoseShift, Strategy.TitForTat): (B-C)/2,
-  (Strategy.WinStayLoseShift, Strategy.AlwaysCooperate): (2*B-C)/2,
-  (Strategy.WinStayLoseShift, Strategy.AlwaysDefect): -C/2,
-  (Strategy.WinStayLoseShift, Strategy.WinStayLoseShift): B-C,
+  (Strategy.AlwaysDefect, Strategy.X): 5*B,
+  (Strategy.X, Strategy.TitForTat): B-C,
+  (Strategy.X, Strategy.AlwaysCooperate): B, 
+  (Strategy.X, Strategy.AlwaysDefect): 0,
+  (Strategy.X, Strategy.X): 0,
 }
 
 def calculate_payoffs(N: int, nALLC: int, nTFT: int, nWSLS: int, nALLD: int, M: Payoffs):
   payoff_ALLC = (
-    nWSLS/(N-1) * M[(Strategy.AlwaysCooperate, Strategy.WinStayLoseShift)]
+    nWSLS/(N-1) * M[(Strategy.AlwaysCooperate, Strategy.X)]
     + nALLD/(N-1) * M[(Strategy.AlwaysCooperate, Strategy.AlwaysDefect)]
     + nTFT/(N-1) * M[(Strategy.AlwaysCooperate, Strategy.TitForTat)]
     + (nALLC-1)/(N-1) * M[(Strategy.AlwaysCooperate, Strategy.AlwaysCooperate)]
   ) if nALLC > 0 else -np.inf 
   payoff_TFT = (
-    nWSLS/(N-1) * M[(Strategy.TitForTat, Strategy.WinStayLoseShift)]
+    nWSLS/(N-1) * M[(Strategy.TitForTat, Strategy.X)]
     + nALLD/(N-1) * M[(Strategy.TitForTat, Strategy.AlwaysDefect)]
     + (nTFT-1)/(N-1) * M[(Strategy.TitForTat, Strategy.TitForTat)]
     + nALLC/(N-1) * M[(Strategy.TitForTat, Strategy.AlwaysCooperate)]
   ) if nTFT > 0 else -np.inf
   payoff_WSLS = (
-    (nWSLS-1)/(N-1) * M[(Strategy.WinStayLoseShift, Strategy.WinStayLoseShift)]
-    + nALLD/(N-1) * M[(Strategy.WinStayLoseShift, Strategy.AlwaysDefect)]
-    + nTFT/(N-1) * M[(Strategy.WinStayLoseShift, Strategy.TitForTat)]
-    + nALLC/(N-1) * M[(Strategy.WinStayLoseShift, Strategy.AlwaysCooperate)]
+    (nWSLS-1)/(N-1) * M[(Strategy.X, Strategy.X)]
+    + nALLD/(N-1) * M[(Strategy.X, Strategy.AlwaysDefect)]
+    + nTFT/(N-1) * M[(Strategy.X, Strategy.TitForTat)]
+    + nALLC/(N-1) * M[(Strategy.X, Strategy.AlwaysCooperate)]
   ) if nWSLS > 0 else -np.inf
   payoff_ALLD = (
-    nWSLS/(N-1) * M[(Strategy.AlwaysDefect, Strategy.WinStayLoseShift)]
+    nWSLS/(N-1) * M[(Strategy.AlwaysDefect, Strategy.X)]
     + (nALLD-1)/(N-1) * M[(Strategy.AlwaysDefect, Strategy.AlwaysDefect)]
     + nTFT/(N-1) * M[(Strategy.AlwaysDefect, Strategy.TitForTat)]
     + nALLC/(N-1) * M[(Strategy.AlwaysDefect, Strategy.AlwaysCooperate)]
@@ -88,7 +88,7 @@ def possibly_mutate(strategy: Strategy, N: int, nALLC: int, nTFT: int, nWSLS: in
   if strategy == Strategy.AlwaysCooperate and (nALLD + nWSLS > 0):
     return random.choices(population=[Strategy.TitForTat, strategy], weights=[mu1, 1-mu1])[0]
   if strategy == Strategy.AlwaysDefect and nALLC + nTFT > 0:
-    return random.choices(population=[Strategy.WinStayLoseShift, strategy], weights=[mu2, 1-mu2])[0]
+    return random.choices(population=[Strategy.X, strategy], weights=[mu2, 1-mu2])[0]
   if strategy == Strategy.TitForTat and nALLD == 0 and nTFT < N:
     return random.choices(population=[Strategy.AlwaysCooperate, strategy], weights=[back_mu, 1-back_mu])[0]
 
@@ -176,14 +176,14 @@ def birth_death(N: int, nALLC: int, nTFT: int, nWSLS: int, nALLD: int, M: Payoff
     N-1,
     nALLC-int(strategy_to_give_birth==Strategy.AlwaysCooperate),
     nTFT-int(strategy_to_give_birth==Strategy.TitForTat),
-    nWSLS-int(strategy_to_give_birth==Strategy.WinStayLoseShift),
+    nWSLS-int(strategy_to_give_birth==Strategy.X),
     nALLD-int(strategy_to_give_birth==Strategy.AlwaysDefect),
   )
   new_strategy = possibly_mutate(strategy_to_give_birth, N, nALLC, nTFT, nWSLS, nALLD, mu1, mu2, back_mu)
   return (
     nALLC + int(new_strategy == Strategy.AlwaysCooperate) - int(strategy_to_die == Strategy.AlwaysCooperate),
     nTFT + int(new_strategy == Strategy.TitForTat) - int(strategy_to_die == Strategy.TitForTat),
-    nWSLS + int(new_strategy == Strategy.WinStayLoseShift) - int(strategy_to_die == Strategy.WinStayLoseShift),
+    nWSLS + int(new_strategy == Strategy.X) - int(strategy_to_die == Strategy.X),
     nALLD + int(new_strategy == Strategy.AlwaysDefect) - int(strategy_to_die == Strategy.AlwaysDefect),
   )
 
@@ -384,10 +384,10 @@ def stack_plot(dff: pd.DataFrame, **kwargs):
   # df['fp_TFT'] = 1-(df['fp_ALLC'] + df['fp_ALLD'])
   df = dff.drop(columns=['fp_ALLC_given_ALLD_extinct'], errors='ignore')
   df = df[['mu1', 'fp_WSLS', 'fp_ALLD', 'fp_TFT', 'fp_ALLC']]
-  df = df.rename(columns={'fp_ALLD': 'ALLD', 'fp_TFT': 'TFT', 'fp_ALLC': 'ALLC', 'fp_WSLS': 'WSLS'})
+  df = df.rename(columns={'fp_ALLD': 'ALLD', 'fp_TFT': 'TFT', 'fp_ALLC': 'ALLC', 'fp_WSLS': 'X'})
   ax = df.set_index('mu1').plot(kind='area', color=['magenta', 'b', 'orange', 'g'])
   # dff[['mu1', 'fraction_ALLC_when_ALLD_extinct']].set_index('mu1').plot.line(ax=ax, c='black')
-  dff[['mu1', 'fraction_E1']].set_index('mu1').plot.line(ax=ax, c='black')
+  # dff[['mu1', 'fraction_E1']].set_index('mu1').plot.line(ax=ax, c='black')
   ax.set_ylabel(r'Fixation probability, $p$')
   ax.set_xlabel(r'Mutation rate, $\mu_1$')
   plt.legend(loc='upper right')
@@ -401,7 +401,7 @@ def stringify_kwargs(**kwargs):
 
 def get_file_name(**kwargs) -> str:
   x = '-' if kwargs else ''
-  return f'WSLS-MU2{MU2}-DYNAMIC:{DYNAMIC}-N{N}-TRIALS{TRIALS}-INTERVALS{INTERVALS}{x}{stringify_kwargs(**kwargs)}'
+  return f'X-MU2{MU2}-DYNAMIC:{DYNAMIC}-N{N}-TRIALS{TRIALS}-INTERVALS{INTERVALS}{x}{stringify_kwargs(**kwargs)}'
 
 def get_plot_file_name(**kwargs) -> str:
   return f'figs/{get_file_name(**kwargs)}.png'

@@ -17,8 +17,9 @@ class Strategy(Enum):
   AlwaysCooperate = 'ALLC'
   TitForTat = 'TFT'
   AlwaysDefect = 'ALLD'
+  WinStayLoseShift = 'WSLS'
 
-STRATEGIES = [Strategy.AlwaysCooperate, Strategy.TitForTat, Strategy.AlwaysDefect]
+STRATEGIES = [Strategy.AlwaysCooperate, Strategy.TitForTat, Strategy.WinStayLoseShift, Strategy.AlwaysDefect]
 
 B = 5
 C = 1
@@ -30,53 +31,71 @@ M: Payoffs = {
   (Strategy.TitForTat, Strategy.TitForTat): (B-C)/2,
   (Strategy.TitForTat, Strategy.AlwaysCooperate): B-C,
   (Strategy.TitForTat, Strategy.AlwaysDefect): 0,
+  (Strategy.TitForTat, Strategy.WinStayLoseShift): (B-C)/2,
   (Strategy.AlwaysCooperate, Strategy.TitForTat): B-C,
   (Strategy.AlwaysCooperate, Strategy.AlwaysCooperate): B-C,
   (Strategy.AlwaysCooperate, Strategy.AlwaysDefect): -C,
+  (Strategy.AlwaysCooperate, Strategy.WinStayLoseShift): (B-2*C)/2,
   (Strategy.AlwaysDefect, Strategy.TitForTat): 0,
   (Strategy.AlwaysDefect, Strategy.AlwaysCooperate): B,
   (Strategy.AlwaysDefect, Strategy.AlwaysDefect): 0,
+  (Strategy.AlwaysDefect, Strategy.WinStayLoseShift): B/2,
+  (Strategy.WinStayLoseShift, Strategy.TitForTat): (B-C)/2,
+  (Strategy.WinStayLoseShift, Strategy.AlwaysCooperate): (2*B-C)/2,
+  (Strategy.WinStayLoseShift, Strategy.AlwaysDefect): -C/2,
+  (Strategy.WinStayLoseShift, Strategy.WinStayLoseShift): B-C,
 }
 
-def calculate_payoffs(N: int, nALLC: int, nTFT: int, M: Payoffs):
-  nALLD = N-nALLC-nTFT
+def calculate_payoffs(N: int, nALLC: int, nTFT: int, nWSLS: int, nALLD: int, M: Payoffs):
   payoff_ALLC = (
-    nALLD/(N-1) * M[(Strategy.AlwaysCooperate, Strategy.AlwaysDefect)]
+    nWSLS/(N-1) * M[(Strategy.AlwaysCooperate, Strategy.WinStayLoseShift)]
+    + nALLD/(N-1) * M[(Strategy.AlwaysCooperate, Strategy.AlwaysDefect)]
     + nTFT/(N-1) * M[(Strategy.AlwaysCooperate, Strategy.TitForTat)]
     + (nALLC-1)/(N-1) * M[(Strategy.AlwaysCooperate, Strategy.AlwaysCooperate)]
   ) if nALLC > 0 else -np.inf 
   payoff_TFT = (
-    nALLD/(N-1) * M[(Strategy.TitForTat, Strategy.AlwaysDefect)]
+    nWSLS/(N-1) * M[(Strategy.TitForTat, Strategy.WinStayLoseShift)]
+    + nALLD/(N-1) * M[(Strategy.TitForTat, Strategy.AlwaysDefect)]
     + (nTFT-1)/(N-1) * M[(Strategy.TitForTat, Strategy.TitForTat)]
     + nALLC/(N-1) * M[(Strategy.TitForTat, Strategy.AlwaysCooperate)]
   ) if nTFT > 0 else -np.inf
   payoff_ALLD = (
-    (nALLD-1)/(N-1) * M[(Strategy.AlwaysDefect, Strategy.AlwaysDefect)]
+    nWSLS/(N-1) * M[(Strategy.AlwaysDefect, Strategy.WinStayLoseShift)]
+    + (nALLD-1)/(N-1) * M[(Strategy.AlwaysDefect, Strategy.AlwaysDefect)]
     + nTFT/(N-1) * M[(Strategy.AlwaysDefect, Strategy.TitForTat)]
     + nALLC/(N-1) * M[(Strategy.AlwaysDefect, Strategy.AlwaysCooperate)]
   ) if nALLD > 0 else -np.inf
+  payoff_WSLS = (
+    (nWSLS-1)/(N-1) * M[(Strategy.WinStayLoseShift, Strategy.WinStayLoseShift)]
+    + nALLD/(N-1) * M[(Strategy.WinStayLoseShift, Strategy.AlwaysDefect)]
+    + nTFT/(N-1) * M[(Strategy.WinStayLoseShift, Strategy.TitForTat)]
+    + nALLC/(N-1) * M[(Strategy.WinStayLoseShift, Strategy.AlwaysCooperate)]
+  ) if nALLD > 0 else -np.inf
 
-  return (payoff_ALLC, payoff_TFT, payoff_ALLD)
+  return (payoff_ALLC, payoff_TFT, payoff_WSLS, payoff_ALLD)
 
-def pick_individual_with_payoffs(N: int, nALLC: int, nTFT: int, M: Payoffs):
+def pick_individual_with_payoffs(N: int, nALLC: int, nTFT: int, nWSLS: int, nALLD: int, M: Payoffs):
   unnormalized_fitnesses = (
-    np.array((nALLC, nTFT, N-nALLC-nTFT)) *
-    np.array(list(map(np.exp, calculate_payoffs(N, nALLC, nTFT, M))))
+    np.array((nALLC, nTFT, nWSLS, nALLD)) *
+    np.array(list(map(np.exp, calculate_payoffs(N, nALLC, nTFT, nWSLS, nALLD, M))))
   )
   return random.choices(population=STRATEGIES, weights=unnormalized_fitnesses)[0]
 
-def pick_individual_uniformly(N: int, nALLC: int, nTFT: int, nALLD):
-  return random.choices(population=STRATEGIES, weights=np.array([nALLC, nTFT, nALLD]))[0]
+def pick_individual_uniformly(N: int, nALLC: int, nTFT: int, nWSLS: int, nALLD: int):
+  return random.choices(population=STRATEGIES, weights=np.array([nALLC, nTFT, nWSLS, nALLD]))[0]
 
-def possibly_mutate(strategy: Strategy, N: int, nTFT: int, nALLD: int, mu: float, back_mu: float):
+def possibly_mutate(strategy: Strategy, N: int, nALLC: int, nTFT: int, nWSLS: int, nALLD: int, mu1: float, mu2: float, back_mu: float):
   if strategy == Strategy.AlwaysCooperate and nALLD > 0:
-    strategy = random.choices(population=[Strategy.TitForTat, strategy], weights=[mu, 1-mu])[0]
+    return random.choices(population=[Strategy.TitForTat, strategy], weights=[mu1, 1-mu1])[0]
+  if strategy == Strategy.AlwaysDefect and nALLC > 0:
+    return random.choices(population=[Strategy.WinStayLoseShift, strategy], weights=[mu2, 1-mu2])[0]
   if strategy == Strategy.TitForTat and nALLD == 0 and nTFT < N:
-    strategy = random.choices(population=[Strategy.AlwaysCooperate, strategy], weights=[back_mu, 1-back_mu])[0]
+    return random.choices(population=[Strategy.AlwaysCooperate, strategy], weights=[back_mu, 1-back_mu])[0]
 
   return strategy
 
 def pairwise_comparison(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, back_mu: float):
+  raise NotImplementedError()
   # logger.info(N, nALLC, nTFT, M, mu, back_mu)
   assert 0 <= mu <= 1, mu
   nALLD = N-nALLC-nTFT
@@ -108,6 +127,7 @@ def pairwise_comparison(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, ba
   )
 
 def imitation(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, back_mu: float):
+  raise NotImplementedError()
   assert 0 <= mu <= 1, mu
   nALLD = N-nALLC-nTFT
   assert nALLC + nTFT + nALLD == N
@@ -126,6 +146,7 @@ def imitation(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, back_mu: flo
   )
 
 def death_birth(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, back_mu: float):
+  raise NotImplementedError()
   assert 0 <= mu <= 1, mu
   nALLD = N-nALLC-nTFT
   assert nALLC + nTFT + nALLD == N
@@ -144,23 +165,26 @@ def death_birth(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, back_mu: f
     nTFT + int(new_strategy == Strategy.TitForTat) - int(strategy_to_die == Strategy.TitForTat),
   )
 
-def birth_death(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, back_mu: float):
-  assert 0 <= mu <= 1, mu
-  nALLD = N-nALLC-nTFT
-  assert nALLC + nTFT + nALLD == N
-  assert all(nX >= 0 for nX in (nALLC, nTFT, nALLD)), (nALLC, nTFT, nALLD)
+def birth_death(N: int, nALLC: int, nTFT: int, nWSLS: int, nALLD: int, M: Payoffs, mu1: float, mu2: float, back_mu: float):
+  assert 0 <= mu1 <= 1, mu1
+  assert 0 <= mu2 <= 1, mu2
+  assert nALLC + nTFT + + nWSLS + nALLD == N
+  assert all(nX >= 0 for nX in (nALLC, nTFT, nWSLS, nALLD)), (nALLC, nTFT, nWSLS, nALLD)
 
-  strategy_to_give_birth = pick_individual_with_payoffs(N, nALLC, nTFT, M)
+  strategy_to_give_birth = pick_individual_with_payoffs(N, nALLC, nTFT, nWSLS, nALLD, M)
   strategy_to_die = pick_individual_uniformly(
     N-1,
     nALLC-int(strategy_to_give_birth==Strategy.AlwaysCooperate),
     nTFT-int(strategy_to_give_birth==Strategy.TitForTat),
+    nWSLS-int(strategy_to_give_birth==Strategy.WinStayLoseShift),
     nALLD-int(strategy_to_give_birth==Strategy.AlwaysDefect),
   )
-  new_strategy = possibly_mutate(strategy_to_give_birth, N, nTFT, nALLD, mu, back_mu)
+  new_strategy = possibly_mutate(strategy_to_give_birth, N, nALLC, nTFT, nWSLS, nALLD, mu1, mu2, back_mu)
   return (
     nALLC + int(new_strategy == Strategy.AlwaysCooperate) - int(strategy_to_die == Strategy.AlwaysCooperate),
     nTFT + int(new_strategy == Strategy.TitForTat) - int(strategy_to_die == Strategy.TitForTat),
+    nWSLS + int(new_strategy == Strategy.WinStayLoseShift) - int(strategy_to_die == Strategy.WinStayLoseShift),
+    nALLD + int(new_strategy == Strategy.AlwaysDefect) - int(strategy_to_die == Strategy.AlwaysDefect),
   )
 
 import networkx as nx
@@ -207,6 +231,7 @@ def birth_death_graph(G_games: nx.DiGraph, G_reproduction: nx.DiGraph, strategie
 
 
 def wrong(N: int, nALLC: int, nTFT: int, M: Payoffs, mu: float, back_mu: float):
+  raise NotImplementedError()
   assert 0 <= mu <= 1, mu
   nALLD = N-nALLC-nTFT
   assert nALLC + nTFT + nALLD == N
@@ -258,9 +283,8 @@ def simulate_graph(G_games: nx.DiGraph, G_reproduction: nx.DiGraph, strategies: 
   logger.info(('end', mu, back_mu))
   return (N, mu, back_mu, *(fp[strategy] for strategy in STRATEGIES))
 
-
-def simulate(N: int, TRIALS: int, dynamics, mu: float, back_mu: float):
-  logger.info(('start', mu, back_mu))
+def simulate(N: int, TRIALS: int, dynamics, mu1: float, mu2: float, back_mu: float):
+  logger.info(('start', mu1, mu2, back_mu))
   fixated_ALLD = []
   fixated = defaultdict(list)
   fixated_ALLC_given_ALLD_extinct = []
@@ -268,17 +292,18 @@ def simulate(N: int, TRIALS: int, dynamics, mu: float, back_mu: float):
   for trial in range(TRIALS):
     nALLC = N-1
     nTFT = 0
+    nWSLS = 0
     nALLD = 1
     tracked_ALLD_extinction = False
-    while all(nX < N for nX in (nALLC, nTFT, nALLD)):
-      nALLCp, nTFTp = dynamics(N, nALLC, nTFT, M, mu=mu, back_mu=back_mu)
-      nALLC, nTFT, nALLD = (nALLCp, nTFTp, N-(nALLCp + nTFTp))
+    while all(nX < N for nX in (nALLC, nTFT, nWSLS, nALLD)):
+      nALLCp, nTFTp, nWSLSp, nALLDp = dynamics(N, nALLC, nTFT, nWSLS, nALLD, M, mu1=mu1, mu2=mu2, back_mu=back_mu)
+      nALLC, nTFT, nWSLS, nALLD = (nALLCp, nTFTp, nWSLSp, nALLDp)
       if nALLD == 0 and not tracked_ALLD_extinction:
         fractions_ALLC_when_ALLD_extinction.append(nALLC / N)
         tracked_ALLD_extinction = True
 
     fixated_ALLD.append(nALLD == N)
-    for strategy, nStrategy in zip(STRATEGIES, (nALLC, nTFT, nALLD)):
+    for strategy, nStrategy in zip(STRATEGIES, (nALLC, nTFT, nWSLS, nALLD)):
       fixated[strategy].append(nStrategy == N)
     if nALLD == 0:
       fixated_ALLC_given_ALLD_extinct.append(nALLC == N)
@@ -290,8 +315,8 @@ def simulate(N: int, TRIALS: int, dynamics, mu: float, back_mu: float):
     fp[strategy] = np.mean(fixated[strategy])
   fp_ALLC_given_ALLD_extinct = np.mean(fixated_ALLC_given_ALLD_extinct)
   fraction_ALLC_when_ALLD_extinction = np.mean(fractions_ALLC_when_ALLD_extinction)
-  logger.info(('end', mu, back_mu))
-  return (N, mu, back_mu, *(fp[strategy] for strategy in STRATEGIES), fp_ALLC_given_ALLD_extinct, fraction_ALLC_when_ALLD_extinction)
+  logger.info(('end', mu1, mu2, back_mu))
+  return (N, mu1, mu2, back_mu, *(fp[strategy] for strategy in STRATEGIES), fp_ALLC_given_ALLD_extinct, fraction_ALLC_when_ALLD_extinction)
 
 
 DYNAMICS = {
@@ -304,8 +329,8 @@ DYNAMICS = {
 }
 
 import itertools
-INTERVALS = 10
-TRIALS = 1000
+INTERVALS = 100
+TRIALS = 10000
 NUM_WORKERS = 8
 DYNAMIC = 'birth-death'
 N = 10
@@ -334,7 +359,7 @@ def collect_data():
   TICK_LABELS = [('0' if tick == 0 else '1' if tick == 1 else '') for tick in TICKS]
   mus = TICKS
   # back_mus = TICKS
-  mutations = [(mu, 0) for mu in mus]
+  mutations = [(mu, .5, 0) for mu in mus]
   # mutations = list(itertools.product(mus, back_mus))
   if NUM_WORKERS > 1:
     with Pool(NUM_WORKERS) as p:
@@ -344,22 +369,22 @@ def collect_data():
     for datum in itertools.starmap(functools.partial(simulate, N, TRIALS, DYNAMICS[DYNAMIC]), mutations):
       data.append(datum)
 
-  return pd.DataFrame(data, columns=['N', 'mu', 'back_mu', 'fp_ALLC', 'fp_TFT', 'fp_ALLD', 'fp_ALLC_given_ALLD_extinct', 'fraction_ALLC_when_ALLD_extinct'])
+  return pd.DataFrame(data, columns=['N', 'mu1', 'mu2', 'back_mu', 'fp_ALLC', 'fp_TFT', 'fp_WSLS', 'fp_ALLD', 'fp_ALLC_given_ALLD_extinct', 'fraction_ALLC_when_ALLD_extinct'])
 
 def stack_plot(dff: pd.DataFrame, **kwargs):
   # df = df[['fp_ALLD', 'fp_ALLC_given_ALLD_extinct', 'mu']]
   # df['fp_ALLC'] = df['fp_ALLC_given_ALLD_extinct'] * (1-df['fp_ALLD'])
   # df['fp_TFT'] = 1-(df['fp_ALLC'] + df['fp_ALLD'])
   df = dff.drop(columns=['fp_ALLC_given_ALLD_extinct'], errors='ignore')
-  df = df[['mu', 'fp_ALLD', 'fp_TFT', 'fp_ALLC']]
-  df = df.rename(columns={'fp_ALLD': 'ALLD', 'fp_TFT': 'TFT', 'fp_ALLC': 'ALLC'})
-  ax = df.set_index('mu').plot(kind='area')
-  dff[['mu', 'fraction_ALLC_when_ALLD_extinct']].set_index('mu').plot.line(ax=ax)
+  df = df[['mu1', 'fp_ALLD', 'fp_TFT', 'fp_WSLS', 'fp_ALLC']]
+  df = df.rename(columns={'fp_ALLD': 'ALLD', 'fp_TFT': 'TFT', 'fp_ALLC': 'ALLC', 'fp_WSLS': 'WSLS'})
+  ax = df.set_index('mu1').plot(kind='area')
+  dff[['mu1', 'fraction_ALLC_when_ALLD_extinct']].set_index('mu1').plot.line(ax=ax)
   ax.set_ylabel(r'Fixation probability, $p$')
-  ax.set_xlabel(r'Mutation rate, $\mu$')
+  ax.set_xlabel(r'Mutation rate, $\mu_1$')
   plt.legend(loc='upper right')
   fig = ax.get_figure()
-  fig.suptitle(f"{DYNAMIC=}, {N=}, {TRIALS=}, {INTERVALS=}")
+  fig.suptitle(f"$\\mu_2=0.5$, {DYNAMIC=}, {N=}, {TRIALS=}, {INTERVALS=}")
   fig.savefig(get_plot_file_name(**kwargs), dpi=300)
   plt.show()
 
@@ -368,7 +393,7 @@ def stringify_kwargs(**kwargs):
 
 def get_file_name(**kwargs) -> str:
   x = '-' if kwargs else ''
-  return f'DYNAMIC:{DYNAMIC}-N{N}-TRIALS{TRIALS}-INTERVALS{INTERVALS}{x}{stringify_kwargs(**kwargs)}'
+  return f'WSLS-DYNAMIC:{DYNAMIC}-N{N}-TRIALS{TRIALS}-INTERVALS{INTERVALS}{x}{stringify_kwargs(**kwargs)}'
 
 def get_plot_file_name(**kwargs) -> str:
   return f'figs/{get_file_name(**kwargs)}.png'
@@ -411,6 +436,6 @@ def main_graph():
   store_data(df, **kwargs)
   stack_plot(df, **kwargs)
 
-USE_EXISTING_DATA = True
+USE_EXISTING_DATA = False
 if __name__ == '__main__':
   main()

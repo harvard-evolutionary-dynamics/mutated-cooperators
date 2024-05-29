@@ -59,17 +59,17 @@ def calculate_payoffs(N: int, nALLC: int, nTFT: int, nWSLS: int, nALLD: int, M: 
     + (nTFT-1)/(N-1) * M[(Strategy.TitForTat, Strategy.TitForTat)]
     + nALLC/(N-1) * M[(Strategy.TitForTat, Strategy.AlwaysCooperate)]
   ) if nTFT > 0 else -np.inf
-  payoff_ALLD = (
-    nWSLS/(N-1) * M[(Strategy.AlwaysDefect, Strategy.WinStayLoseShift)]
-    + (nALLD-1)/(N-1) * M[(Strategy.AlwaysDefect, Strategy.AlwaysDefect)]
-    + nTFT/(N-1) * M[(Strategy.AlwaysDefect, Strategy.TitForTat)]
-    + nALLC/(N-1) * M[(Strategy.AlwaysDefect, Strategy.AlwaysCooperate)]
-  ) if nALLD > 0 else -np.inf
   payoff_WSLS = (
     (nWSLS-1)/(N-1) * M[(Strategy.WinStayLoseShift, Strategy.WinStayLoseShift)]
     + nALLD/(N-1) * M[(Strategy.WinStayLoseShift, Strategy.AlwaysDefect)]
     + nTFT/(N-1) * M[(Strategy.WinStayLoseShift, Strategy.TitForTat)]
     + nALLC/(N-1) * M[(Strategy.WinStayLoseShift, Strategy.AlwaysCooperate)]
+  ) if nWSLS > 0 else -np.inf
+  payoff_ALLD = (
+    nWSLS/(N-1) * M[(Strategy.AlwaysDefect, Strategy.WinStayLoseShift)]
+    + (nALLD-1)/(N-1) * M[(Strategy.AlwaysDefect, Strategy.AlwaysDefect)]
+    + nTFT/(N-1) * M[(Strategy.AlwaysDefect, Strategy.TitForTat)]
+    + nALLC/(N-1) * M[(Strategy.AlwaysDefect, Strategy.AlwaysCooperate)]
   ) if nALLD > 0 else -np.inf
 
   return (payoff_ALLC, payoff_TFT, payoff_WSLS, payoff_ALLD)
@@ -85,9 +85,9 @@ def pick_individual_uniformly(N: int, nALLC: int, nTFT: int, nWSLS: int, nALLD: 
   return random.choices(population=STRATEGIES, weights=np.array([nALLC, nTFT, nWSLS, nALLD]))[0]
 
 def possibly_mutate(strategy: Strategy, N: int, nALLC: int, nTFT: int, nWSLS: int, nALLD: int, mu1: float, mu2: float, back_mu: float):
-  if strategy == Strategy.AlwaysCooperate and nALLD > 0:
+  if strategy == Strategy.AlwaysCooperate and (nALLD + nWSLS > 0):
     return random.choices(population=[Strategy.TitForTat, strategy], weights=[mu1, 1-mu1])[0]
-  if strategy == Strategy.AlwaysDefect and nALLC > 0:
+  if strategy == Strategy.AlwaysDefect and nALLC + nTFT > 0:
     return random.choices(population=[Strategy.WinStayLoseShift, strategy], weights=[mu2, 1-mu2])[0]
   if strategy == Strategy.TitForTat and nALLD == 0 and nTFT < N:
     return random.choices(population=[Strategy.AlwaysCooperate, strategy], weights=[back_mu, 1-back_mu])[0]
@@ -329,10 +329,11 @@ DYNAMICS = {
 }
 
 import itertools
-INTERVALS = 100
-TRIALS = 10000
+INTERVALS = 10
+TRIALS = 1000
 NUM_WORKERS = 8
 DYNAMIC = 'birth-death'
+MU2 = 0.2
 N = 10
 
 def collect_data_graph(G_games: nx.DiGraph, G_reproduction: nx.DiGraph, strategies: Dict[Any, Strategy]):
@@ -359,7 +360,7 @@ def collect_data():
   TICK_LABELS = [('0' if tick == 0 else '1' if tick == 1 else '') for tick in TICKS]
   mus = TICKS
   # back_mus = TICKS
-  mutations = [(mu, .5, 0) for mu in mus]
+  mutations = [(mu, MU2, 0) for mu in mus]
   # mutations = list(itertools.product(mus, back_mus))
   if NUM_WORKERS > 1:
     with Pool(NUM_WORKERS) as p:
@@ -376,15 +377,15 @@ def stack_plot(dff: pd.DataFrame, **kwargs):
   # df['fp_ALLC'] = df['fp_ALLC_given_ALLD_extinct'] * (1-df['fp_ALLD'])
   # df['fp_TFT'] = 1-(df['fp_ALLC'] + df['fp_ALLD'])
   df = dff.drop(columns=['fp_ALLC_given_ALLD_extinct'], errors='ignore')
-  df = df[['mu1', 'fp_ALLD', 'fp_TFT', 'fp_WSLS', 'fp_ALLC']]
+  df = df[['mu1', 'fp_WSLS', 'fp_ALLD', 'fp_TFT', 'fp_ALLC']]
   df = df.rename(columns={'fp_ALLD': 'ALLD', 'fp_TFT': 'TFT', 'fp_ALLC': 'ALLC', 'fp_WSLS': 'WSLS'})
-  ax = df.set_index('mu1').plot(kind='area')
-  dff[['mu1', 'fraction_ALLC_when_ALLD_extinct']].set_index('mu1').plot.line(ax=ax)
+  ax = df.set_index('mu1').plot(kind='area', color=['magenta', 'b', 'orange', 'g'])
+  dff[['mu1', 'fraction_ALLC_when_ALLD_extinct']].set_index('mu1').plot.line(ax=ax, c='black')
   ax.set_ylabel(r'Fixation probability, $p$')
   ax.set_xlabel(r'Mutation rate, $\mu_1$')
   plt.legend(loc='upper right')
   fig = ax.get_figure()
-  fig.suptitle(f"$\\mu_2=0.5$, {DYNAMIC=}, {N=}, {TRIALS=}, {INTERVALS=}")
+  fig.suptitle(f"$\\mu_2={MU2}$, {DYNAMIC=}, {N=}, {TRIALS=}, {INTERVALS=}")
   fig.savefig(get_plot_file_name(**kwargs), dpi=300)
   plt.show()
 
@@ -393,7 +394,7 @@ def stringify_kwargs(**kwargs):
 
 def get_file_name(**kwargs) -> str:
   x = '-' if kwargs else ''
-  return f'WSLS-DYNAMIC:{DYNAMIC}-N{N}-TRIALS{TRIALS}-INTERVALS{INTERVALS}{x}{stringify_kwargs(**kwargs)}'
+  return f'WSLS-MU2{MU2}-DYNAMIC:{DYNAMIC}-N{N}-TRIALS{TRIALS}-INTERVALS{INTERVALS}{x}{stringify_kwargs(**kwargs)}'
 
 def get_plot_file_name(**kwargs) -> str:
   return f'figs/{get_file_name(**kwargs)}.png'

@@ -289,19 +289,24 @@ def simulate(N: int, TRIALS: int, dynamics, mu1: float, mu2: float, back_mu: flo
   fixated = defaultdict(list)
   fixated_ALLC_given_ALLD_extinct = []
   fractions_ALLC_when_ALLD_extinction = []
+  E1s = []
   for trial in range(TRIALS):
     nALLC = N-1
     nTFT = 0
     nWSLS = 0
     nALLD = 1
     tracked_ALLD_extinction = False
+    tracked_E1 = False
     while all(nX < N for nX in (nALLC, nTFT, nWSLS, nALLD)):
       nALLCp, nTFTp, nWSLSp, nALLDp = dynamics(N, nALLC, nTFT, nWSLS, nALLD, M, mu1=mu1, mu2=mu2, back_mu=back_mu)
       nALLC, nTFT, nWSLS, nALLD = (nALLCp, nTFTp, nWSLSp, nALLDp)
+      if nALLD == 0 and nWSLS > 0:
+        tracked_E1 = True
       if nALLD == 0 and not tracked_ALLD_extinction:
         fractions_ALLC_when_ALLD_extinction.append(nALLC / N)
         tracked_ALLD_extinction = True
 
+    E1s.append(int(tracked_E1))
     fixated_ALLD.append(nALLD == N)
     for strategy, nStrategy in zip(STRATEGIES, (nALLC, nTFT, nWSLS, nALLD)):
       fixated[strategy].append(nStrategy == N)
@@ -315,8 +320,9 @@ def simulate(N: int, TRIALS: int, dynamics, mu1: float, mu2: float, back_mu: flo
     fp[strategy] = np.mean(fixated[strategy])
   fp_ALLC_given_ALLD_extinct = np.mean(fixated_ALLC_given_ALLD_extinct)
   fraction_ALLC_when_ALLD_extinction = np.mean(fractions_ALLC_when_ALLD_extinction)
+  fraction_E1 = np.mean(E1s)
   logger.info(('end', mu1, mu2, back_mu))
-  return (N, mu1, mu2, back_mu, *(fp[strategy] for strategy in STRATEGIES), fp_ALLC_given_ALLD_extinct, fraction_ALLC_when_ALLD_extinction)
+  return (N, mu1, mu2, back_mu, *(fp[strategy] for strategy in STRATEGIES), fp_ALLC_given_ALLD_extinct, fraction_ALLC_when_ALLD_extinction, fraction_E1)
 
 
 DYNAMICS = {
@@ -370,7 +376,7 @@ def collect_data():
     for datum in itertools.starmap(functools.partial(simulate, N, TRIALS, DYNAMICS[DYNAMIC]), mutations):
       data.append(datum)
 
-  return pd.DataFrame(data, columns=['N', 'mu1', 'mu2', 'back_mu', 'fp_ALLC', 'fp_TFT', 'fp_WSLS', 'fp_ALLD', 'fp_ALLC_given_ALLD_extinct', 'fraction_ALLC_when_ALLD_extinct'])
+  return pd.DataFrame(data, columns=['N', 'mu1', 'mu2', 'back_mu', 'fp_ALLC', 'fp_TFT', 'fp_WSLS', 'fp_ALLD', 'fp_ALLC_given_ALLD_extinct', 'fraction_ALLC_when_ALLD_extinct', 'fraction_E1'])
 
 def stack_plot(dff: pd.DataFrame, **kwargs):
   # df = df[['fp_ALLD', 'fp_ALLC_given_ALLD_extinct', 'mu']]
@@ -380,7 +386,8 @@ def stack_plot(dff: pd.DataFrame, **kwargs):
   df = df[['mu1', 'fp_WSLS', 'fp_ALLD', 'fp_TFT', 'fp_ALLC']]
   df = df.rename(columns={'fp_ALLD': 'ALLD', 'fp_TFT': 'TFT', 'fp_ALLC': 'ALLC', 'fp_WSLS': 'WSLS'})
   ax = df.set_index('mu1').plot(kind='area', color=['magenta', 'b', 'orange', 'g'])
-  dff[['mu1', 'fraction_ALLC_when_ALLD_extinct']].set_index('mu1').plot.line(ax=ax, c='black')
+  # dff[['mu1', 'fraction_ALLC_when_ALLD_extinct']].set_index('mu1').plot.line(ax=ax, c='black')
+  dff[['mu1', 'fraction_E1']].set_index('mu1').plot.line(ax=ax, c='black')
   ax.set_ylabel(r'Fixation probability, $p$')
   ax.set_xlabel(r'Mutation rate, $\mu_1$')
   plt.legend(loc='upper right')

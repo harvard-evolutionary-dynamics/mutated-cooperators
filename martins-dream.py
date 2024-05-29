@@ -23,6 +23,9 @@ STRATEGIES = [Strategy.AlwaysCooperate, Strategy.TitForTat, Strategy.AlwaysDefec
 B = 5
 C = 1
 
+def log(*args, **kwargs):
+  print(*args, **kwargs, flush=True)
+
 # (I play as .., they play as ..) -> my payoff
 Payoffs = Dict[Tuple[Strategy, Strategy], float]
 
@@ -304,11 +307,11 @@ DYNAMICS = {
 }
 
 import itertools
-INTERVALS = 10
-TRIALS = 1000
-NUM_WORKERS = 8
+INTERVALS = 100
+TRIALS = 10000
+NUM_WORKERS = 64
 DYNAMIC = 'birth-death'
-N = 10
+N = 35
 
 def collect_data_graph(G_games: nx.DiGraph, G_reproduction: nx.DiGraph, strategies: Dict[Any, Strategy]):
   data = []
@@ -354,14 +357,15 @@ def stack_plot(dff: pd.DataFrame, **kwargs):
   df = df[['mu', 'fp_ALLD', 'fp_TFT', 'fp_ALLC']]
   df = df.rename(columns={'fp_ALLD': 'ALLD', 'fp_TFT': 'TFT', 'fp_ALLC': 'ALLC'})
   ax = df.set_index('mu').plot(kind='area')
-  dff[['mu', 'fraction_ALLC_when_ALLD_extinct']].set_index('mu').plot.line(ax=ax)
+  dff['fraction_TFT_when_ALLD_extinct'] = 1-dff['fraction_ALLC_when_ALLD_extinct']
+  dff[['mu', 'fraction_TFT_when_ALLD_extinct']].set_index('mu').plot.line(ax=ax)
   ax.set_ylabel(r'Fixation probability, $p$')
   ax.set_xlabel(r'Mutation rate, $\mu$')
   plt.legend(loc='upper right')
   fig = ax.get_figure()
   fig.suptitle(f"{DYNAMIC=}, {N=}, {TRIALS=}, {INTERVALS=}")
   fig.savefig(get_plot_file_name(**kwargs), dpi=300)
-  plt.show()
+  # plt.show()
 
 def stringify_kwargs(**kwargs):
   return '-'.join(f'{k}:{v}' for k, v in sorted(kwargs.items()))
@@ -411,6 +415,6 @@ def main_graph():
   store_data(df, **kwargs)
   stack_plot(df, **kwargs)
 
-USE_EXISTING_DATA = True
+USE_EXISTING_DATA = False
 if __name__ == '__main__':
   main()

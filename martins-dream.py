@@ -28,20 +28,20 @@ C = 1
 Payoffs = Dict[Tuple[Strategy, Strategy], float]
 
 M: Payoffs = {
+  (Strategy.AlwaysCooperate, Strategy.TitForTat): B-C,
+  (Strategy.AlwaysCooperate, Strategy.AlwaysCooperate): B-C,
+  (Strategy.AlwaysCooperate, Strategy.AlwaysDefect): -C,
+  (Strategy.AlwaysCooperate, Strategy.X): (B-3*C)/3,
   (Strategy.TitForTat, Strategy.TitForTat): (B-C)/2,
   (Strategy.TitForTat, Strategy.AlwaysCooperate): B-C,
   (Strategy.TitForTat, Strategy.AlwaysDefect): 0,
   (Strategy.TitForTat, Strategy.X): 0,
-  (Strategy.AlwaysCooperate, Strategy.TitForTat): B-C,
-  (Strategy.AlwaysCooperate, Strategy.AlwaysCooperate): B-C,
-  (Strategy.AlwaysCooperate, Strategy.AlwaysDefect): -C,
-  (Strategy.AlwaysCooperate, Strategy.X): 0,
   (Strategy.AlwaysDefect, Strategy.TitForTat): 0,
   (Strategy.AlwaysDefect, Strategy.AlwaysCooperate): B,
   (Strategy.AlwaysDefect, Strategy.AlwaysDefect): 0,
-  (Strategy.AlwaysDefect, Strategy.X): 5*B,
-  (Strategy.X, Strategy.TitForTat): B-C,
-  (Strategy.X, Strategy.AlwaysCooperate): B, 
+  (Strategy.AlwaysDefect, Strategy.X): 0,
+  (Strategy.X, Strategy.AlwaysCooperate): (3*B-C)/3, 
+  (Strategy.X, Strategy.TitForTat): 0,
   (Strategy.X, Strategy.AlwaysDefect): 0,
   (Strategy.X, Strategy.X): 0,
 }
@@ -401,7 +401,7 @@ def stringify_kwargs(**kwargs):
 
 def get_file_name(**kwargs) -> str:
   x = '-' if kwargs else ''
-  return f'X-MU2{MU2}-DYNAMIC:{DYNAMIC}-N{N}-TRIALS{TRIALS}-INTERVALS{INTERVALS}{x}{stringify_kwargs(**kwargs)}'
+  return f'XX-MU2{MU2}-DYNAMIC:{DYNAMIC}-N{N}-TRIALS{TRIALS}-INTERVALS{INTERVALS}{x}{stringify_kwargs(**kwargs)}'
 
 def get_plot_file_name(**kwargs) -> str:
   return f'figs/{get_file_name(**kwargs)}.png'
